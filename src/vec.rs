@@ -1,4 +1,9 @@
 use cell::DCell;
+use std::clone::Clone;
+use std::mem;
+use std::rc::{self, Rc};
+use self::DVecState::*;
+use self::Action::*;
 
 pub struct DVec<T> {
     state: Rc<DCell<DVecState<T>>>
@@ -6,10 +11,43 @@ pub struct DVec<T> {
 
 enum DVecState<T> {
     Root(Vec<T>),
-    Diff(DVec<T>, usize, T),
+    Diff(DVec<T>, Action<T>),
 }
 
-impl DVec<T> {
+enum Action<T> {
+    Pop,
+    Push(T),
+    Set(usize, T),
+}
+
+impl<T> Clone for DVec<T> {
+    fn clone(&self) -> DVec<T> {
+        DVec { state: self.state.clone() }
+    }
+}
+
+impl<T> DVec<T> {
+    fn new(data: Vec<T>) -> DVec<T> {
+        let placeholder = DVec::new_placeholder();
+        placeholder.state.put(Root(data));
+        placeholder
+    }
+
+    fn new_placeholder() -> DVec<T> {
+        DVec { state: Rc::new(DCell::new()) }
+    }
+
+    /// Debugging fn that tells you how many levels of diff
+    /// there between self and the root.
+    fn depth(&self) -> usize {
+        self.state.read(|state| {
+            match *state {
+                Root(..) => 0,
+                Diff(ref base, _) => base.depth() + 1
+            }
+        })
+    }
+
     /// Extracts the root vector as viewed from this node. At the end
     /// of this function, this node will be empty and all other nodes
     /// in the tree will point at this node in root. In other words,
@@ -18,15 +56,34 @@ impl DVec<T> {
     fn extract_data(&self) -> Vec<T> {
         match self.state.take() {
             Root(data) => data,
-            Diff(dvec, index, element) => dvec.update(index, element),
+            Diff(dvec, action) => dvec.make_diff(self, action),
         }
     }
 
-    fn update(&self, index: usize, element: T) -> Vec<T> {
-        let data = self.extract_data();
-        let old_element = data.swap(index, element);
-        self.state.replace(Diff(self.clone(), index, old_element));
+    /// Converts self into a diff against `root`, where `root`
+    /// is the same as self but that `index` is changed to `element`.
+    /// Returns the data array (with `index` updated) but does not
+    /// modify the state of `root`, which should be empty.
+    fn make_diff(&self, root: &DVec<T>, action: Action<T>) -> Vec<T> {
+        assert!(root.state.is_empty());
+        let mut data = self.extract_data();
+        let reverse = action.enact(&mut data);
+        self.state.put(Diff(root.clone(), reverse));
         data
+    }
+
+    fn mutate(&mut self, action: Action<T>) {
+        if rc::is_unique(&self.state) {
+            // avoiding making a new diff if not needed
+            let mut data = self.extract_data();
+            let _ = action.enact(&mut data); // don't need the reverse
+            self.state.put(Root(data));
+        } else {
+            let root = DVec::new_placeholder();
+            let data = self.make_diff(&root, action);
+            root.state.put(Root(data));
+            *self = root;
+        }
     }
 
     /// Converts this node into the root.  While the read is taking
@@ -38,8 +95,12 @@ impl DVec<T> {
     {
         let data = self.extract_data();
         let result = func(&data);
-        self.state.replace(Root(data));
+        self.state.put(Root(data));
         result
+    }
+
+    pub fn len(&self) -> usize {
+        self.read(|data| data.len())
     }
 
     pub fn get(&self, index: usize) -> T
@@ -48,8 +109,87 @@ impl DVec<T> {
         self.read(|data| data[index].clone())
     }
 
-    pub fn with(&self, index: usize, element: T) -> DVec<T> {
-        let data = self.update(index, element);
-        DVec { state: Rc::new(RefCell::new(
+    pub fn push(&mut self, value: T) {
+        self.mutate(Push(value));
+    }
+
+    pub fn set(&mut self, index: usize, element: T) {
+        self.mutate(Set(index, element));
     }
 }
+
+impl<T> Action<T> {
+    fn enact(self, data: &mut Vec<T>) -> Action<T> {
+        match self {
+            Pop => {
+                let value = data.pop().unwrap();
+                Push(value)
+            }
+
+            Push(v) => {
+                data.push(v);
+                Pop
+            }
+
+            Set(index, element) => {
+                let old_element = mem::replace(&mut data[index], element);
+                Set(index, old_element)
+            }
+        }
+    }
+}
+
+#[test]
+fn set() {
+    let mut a = DVec::new(vec![1, 2, 3]);
+    let b = a.clone();
+    a.set(0, 10);
+    a.set(1, 20);
+    a.set(2, 30);
+
+    assert_eq!(a.depth(), 0);
+    assert_eq!(b.depth(), 3);
+
+    assert_eq!(a.get(0), 10);
+    assert_eq!(a.get(1), 20);
+    assert_eq!(a.get(2), 30);
+
+    assert_eq!(a.depth(), 0);
+    assert_eq!(b.depth(), 3);
+
+    assert_eq!(b.get(0), 1);
+    assert_eq!(b.get(1), 2);
+    assert_eq!(b.get(2), 3);
+
+    assert_eq!(a.depth(), 3);
+    assert_eq!(b.depth(), 0);
+
+    assert_eq!(a.get(0), 10);
+    assert_eq!(a.get(1), 20);
+    assert_eq!(a.get(2), 30);
+
+    assert_eq!(a.depth(), 0);
+    assert_eq!(b.depth(), 3);
+}
+
+#[test]
+fn push() {
+    let mut a = DVec::new(vec![1]);
+    let b = a.clone();
+    a.push(20);
+    a.push(30);
+
+    assert_eq!(a.get(0), 1);
+    assert_eq!(a.get(1), 20);
+    assert_eq!(a.get(2), 30);
+    assert_eq!(a.len(), 3);
+
+    assert_eq!(b.get(0), 1);
+    assert_eq!(b.len(), 1);
+
+    assert_eq!(a.get(0), 1);
+    assert_eq!(a.get(1), 20);
+    assert_eq!(a.get(2), 30);
+    assert_eq!(a.len(), 3);
+}
+
