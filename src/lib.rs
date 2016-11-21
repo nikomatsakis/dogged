@@ -5,6 +5,12 @@ use std::fmt::Debug;
 use std::mem;
 use std::sync::Arc;
 
+macro_rules! debug {
+    ($($t:tt)*) => {
+        // println!($($t)*);
+    }
+}
+
 #[cfg(not(small_branch))]
 const BRANCH_FACTOR: usize = 32;
 
@@ -140,15 +146,15 @@ impl<T: Clone + Debug> PersistentVec<T> {
         // We just filled up the tail, therefore we should have an
         // even multiple of BRANCH_FACTOR elements.
         debug_assert!(self.root_len.0 % BRANCH_FACTOR == 0);
-        println!("---------------------------------------------------------------------------");
-        println!("PersistentVec::push_tail(tail={:?})", tail);
+        debug!("---------------------------------------------------------------------------");
+        debug!("PersistentVec::push_tail(tail={:?})", tail);
 
         if let Some(root) = self.root.as_mut() {
             // Find out the total capacity in the "leaf" tree.
             let capacity = BRANCH_FACTOR << self.shift.0;
 
             // Still have room.
-            println!("push_tail: self.root_len={:?} capacity={:?}", self.root_len, capacity);
+            debug!("push_tail: self.root_len={:?} capacity={:?}", self.root_len, capacity);
             if (self.root_len.0 + BRANCH_FACTOR) <= capacity {
                 Arc::make_mut(root).push_tail(self.shift, self.root_len, tail);
                 return;
@@ -280,7 +286,7 @@ impl<T: Clone + Debug> Node<T> {
     }
 
     pub fn push_tail(&mut self, shift: Shift, index: Index, tail: Vec<T>) {
-        println!("push_tail(shift={:?}, index={:?})", shift, index);
+        debug!("push_tail(shift={:?}, index={:?})", shift, index);
         // Example 1.
         //
         // The vector has 96 elements, 32 of which are in the tail that we
@@ -303,7 +309,7 @@ impl<T: Clone + Debug> Node<T> {
         let mut p = self;
         let mut shift = shift;
         loop {
-            println!("shift={:?}", shift);
+            debug!("shift={:?}", shift);
             debug_assert!(shift.0 >= BITS_PER_LEVEL);
             let mut q = p; // FIXME
             match *q {
@@ -317,7 +323,7 @@ impl<T: Clone + Debug> Node<T> {
                     if shift.0 == 0 {
                         // children[child] is the final level
                         debug_assert!(children[child].is_none());
-                        println!("Node::push_tail: storing with child={:?}", child);
+                        debug!("Node::push_tail: storing with child={:?}", child);
                         children[child] = Some(Arc::new(Node::Leaf { elements: tail }));
                         return;
                     }
@@ -335,9 +341,9 @@ impl<T: Clone + Debug> Node<T> {
                         continue;
                     }
 
-                    println!("creating branch ladder at child {}", child);
+                    debug!("creating branch ladder at child {}", child);
                     children[child] = Some(Node::branch_ladder(shift, tail));
-                    println!("result: {:?}", children);
+                    debug!("result: {:?}", children);
                     return;
                 }
             }
