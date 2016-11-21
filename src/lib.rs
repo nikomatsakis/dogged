@@ -1,10 +1,15 @@
-use std::cmp::{PartialOrd, Ordering};
+use std::cmp::{self, PartialOrd, Ordering};
+use std::fmt::Debug;
 use std::mem;
 use std::sync::Arc;
 
+#[cfg(not(small_branch))]
 const BRANCH_FACTOR: usize = 32;
+
+#[cfg(not(small_branch))]
 const BITS_PER_LEVEL: usize = 5;
 
+#[cfg(not(small_branch))]
 macro_rules! no_children {
     () => {
         [None, None, None, None,
@@ -18,6 +23,7 @@ macro_rules! no_children {
     }
 }
 
+#[cfg(not(small_branch))]
 macro_rules! clone_arr {
     ($source:expr) => {
         {
@@ -31,6 +37,31 @@ macro_rules! clone_arr {
                 s[0x14].clone(), s[0x15].clone(), s[0x16].clone(), s[0x17].clone(),
                 s[0x18].clone(), s[0x19].clone(), s[0x1A].clone(), s[0x1B].clone(),
                 s[0x1C].clone(), s[0x1D].clone(), s[0x1E].clone(), s[0x1F].clone(),
+            ]
+        }
+    }
+}
+
+#[cfg(small_branch)]
+const BRANCH_FACTOR: usize = 4;
+
+#[cfg(small_branch)]
+const BITS_PER_LEVEL: usize = 2;
+
+#[cfg(small_branch)]
+macro_rules! no_children {
+    () => {
+        [None, None, None, None]
+    }
+}
+
+#[cfg(small_branch)]
+macro_rules! clone_arr {
+    ($source:expr) => {
+        {
+            let s = $source;
+            [
+                s[0x00].clone(), s[0x01].clone(), s[0x02].clone(), s[0x03].clone(),
             ]
         }
     }
@@ -52,11 +83,15 @@ struct Index(usize);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Node<T> {
-    Branch { children: [Option<Arc<Node<T>>>; BRANCH_FACTOR] },
-    Leaf { elements: Vec<T> },
+    Branch {
+        children: [Option<Arc<Node<T>>>; BRANCH_FACTOR],
+    },
+    Leaf {
+        elements: Vec<T>,
+    },
 }
 
-impl<T: Clone> PersistentVec<T> {
+impl<T: Clone + Debug> PersistentVec<T> {
     pub fn new() -> Self {
         PersistentVec {
             len: Index(0),
@@ -76,7 +111,7 @@ impl<T: Clone> PersistentVec<T> {
                 if index >= self.len.0 {
                     None
                 } else {
-                    Some(node.get(self.shift, self.len))
+                    Some(node.get(self.shift, Index(index)))
                 }
             }
         }
@@ -92,7 +127,7 @@ impl<T: Clone> PersistentVec<T> {
                 if index >= self.len.0 {
                     None
                 } else {
-                    Some(Arc::make_mut(node).get_mut(self.shift, self.len))
+                    Some(Arc::make_mut(node).get_mut(self.shift, Index(index)))
                 }
             }
         }
@@ -110,6 +145,8 @@ impl<T: Clone> PersistentVec<T> {
             let tail = mem::replace(&mut self.tail, Vec::with_capacity(BRANCH_FACTOR));
             self.push_tail(tail);
         }
+
+        self.validate();
     }
 
     #[cold]
@@ -117,14 +154,16 @@ impl<T: Clone> PersistentVec<T> {
         // We just filled up the tail, therefore we should have an
         // even multiple of BRANCH_FACTOR elements.
         debug_assert!(self.len.0 % BRANCH_FACTOR == 0);
+        println!("push_tail(tail={:?})", tail);
 
         if let Some(root) = self.root.as_mut() {
             // Find out the total capacity in the "leaf" tree.
             let capacity = BRANCH_FACTOR << self.shift.0;
 
             // Still have room.
+            println!("push_tail: self.len={:?} capacity={:?}", self.len, capacity);
             if self.len <= capacity {
-                Arc::make_mut(root).push_tail(self.shift, self.len, tail);
+                Arc::make_mut(root).push_tail(self.shift, self.len.start(), tail);
                 return;
             }
 
@@ -140,6 +179,23 @@ impl<T: Clone> PersistentVec<T> {
         debug_assert!(self.len == BRANCH_FACTOR);
         debug_assert!(self.shift == 0);
         self.root = Some(Arc::new(Node::Leaf { elements: tail }));
+    }
+
+    #[cfg(not(test))]
+    fn validate(&self) {}
+
+    #[cfg(test)]
+    fn validate(&self) {
+        if let Some(ref root) = self.root {
+            let root_len = Index(self.len.0 - self.tail.len());
+            if let Err(err) = root.validate(&mut vec![], self.shift, root_len) {
+                panic!("validation error {} with {:#?}", err, root);
+            }
+        }
+        let tail_len = self.tail.len();
+        assert!(tail_len < BRANCH_FACTOR,
+                "tail got too long: {:?}",
+                tail_len);
     }
 }
 
@@ -169,7 +225,70 @@ impl Shift {
     }
 }
 
-impl<T: Clone> Node<T> {
+impl<T: Clone + Debug> Node<T> {
+    pub fn validate(&self, path: &mut Vec<usize>, shift: Shift, len: Index) -> Result<(), String> {
+        // This is called just after a `push_tail`. The tree should be
+        // dense to the left.
+        match *self {
+            Node::Branch { ref children } => {
+                if shift.0 == 0 {
+                    return Err(format!("encountered branch at path {:?} but shift is {:?}",
+                                       path,
+                                       shift));
+                }
+
+                let mut children_iter = children.iter().enumerate();
+                let mut walked = 0;
+                while walked < len.0 {
+                    if let Some((i, child)) = children_iter.next() {
+                        match *child {
+                            Some(ref c) => {
+                                path.push(i);
+
+                                let max_in_child = BRANCH_FACTOR << (shift.0 - BITS_PER_LEVEL);
+                                let remaining = len.0 - walked;
+                                let child_len = cmp::min(remaining, max_in_child);
+                                if child_len == 0 {
+                                    return Err(format!("at path {:?}, empty child", path));
+                                }
+                                c.validate(path, shift.dec(), Index(child_len))?;
+                                walked += child_len;
+                                assert!(i == path.pop().unwrap());
+                            }
+                            None => {
+                                return Err(format!("at path {:?}, found unexpected none at {}",
+                                                   path,
+                                                   i));
+                            }
+                        }
+                    } else {
+                        return Err(format!("at path {:?}, iterator ended early", path));
+                    }
+                }
+
+                if let Some(c) = children_iter.find(|c| c.1.is_some()) {
+                    return Err(format!("node at path {:?} had unexected `some` ({})",
+                                       path,
+                                       c.0));
+                }
+            }
+
+            Node::Leaf { ref elements } => {
+                if shift.0 != 0 {
+                    return Err(format!("encountered leaf at path {:?} but shift is {:?}",
+                                       path,
+                                       shift));
+                }
+                if elements.len() != BRANCH_FACTOR {
+                    return Err(format!("encountered leaf at path {:?} with only {} elements",
+                                       path,
+                                       elements.len()));
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn branch_ladder(shift: Shift, tail: Vec<T>) -> Arc<Node<T>> {
         if shift.0 > 0 {
             let mut children = no_children!();
@@ -181,6 +300,7 @@ impl<T: Clone> Node<T> {
     }
 
     pub fn push_tail(&mut self, shift: Shift, index: Index, tail: Vec<T>) {
+        println!("push_tail(shift={:?}, index={:?})", shift, index);
         // Example 1.
         //
         // The vector has 96 elements, 32 of which are in the tail that we
@@ -203,6 +323,7 @@ impl<T: Clone> Node<T> {
         let mut p = self;
         let mut shift = shift;
         loop {
+            println!("shift={:?}", shift);
             debug_assert!(shift.0 >= BITS_PER_LEVEL);
             let mut q = p; // FIXME
             match *q {
@@ -210,10 +331,13 @@ impl<T: Clone> Node<T> {
                     unreachable!("should not encounter a leaf w/ shift {:?}", shift)
                 }
                 Node::Branch { ref mut children } => {
-                    if shift.0 == BITS_PER_LEVEL {
-                        // We are on the final level; our children are leaves.
-                        let child = index.start().child(shift);
+                    let child = index.child(shift);
+                    shift = shift.dec(); // represents the shift of children[child] now
+
+                    if shift.0 == 0 {
+                        // children[child] is the final level
                         debug_assert!(children[child].is_none());
+                        println!("Node::push_tail: storing with child={:?}", child);
                         children[child] = Some(Arc::new(Node::Leaf { elements: tail }));
                         return;
                     }
@@ -221,15 +345,19 @@ impl<T: Clone> Node<T> {
                     // Load up the child and descend to that
                     // level. There should be a child there or
                     // something went wrong.
-                    let child = index.child(shift);
-                    shift = shift.dec();
+                    println!("Node::push_tail: shift={:?} index={:?} child={:?}",
+                             shift,
+                             index,
+                             child);
                     if children[child].is_some() {
                         let child = children[child].as_mut().unwrap();
                         p = Arc::make_mut(child);
                         continue;
                     }
 
+                    println!("creating branch ladder at child {}", child);
                     children[child] = Some(Node::branch_ladder(shift, tail));
+                    println!("result: {:?}", children);
                     return;
                 }
             }
@@ -246,7 +374,8 @@ impl<T: Clone> Node<T> {
                     let child = index.child(shift);
                     p = match children[child] {
                         Some(ref c) => &*c,
-                        None => panic!("missing child {} at shift {}", child, shift.0),
+                        None => panic!("missing child {} at shift {} (index={})",
+                                       child, shift.0, index.0),
                     };
                     shift = shift.dec();
                 }
@@ -315,12 +444,8 @@ impl PartialOrd<usize> for Shift {
 impl<T: Clone> Clone for Node<T> {
     fn clone(&self) -> Self {
         match *self {
-            Node::Branch { ref children } => {
-                Node::Branch { children: clone_arr!(children) }
-            }
-            Node::Leaf { ref elements } => {
-                Node::Leaf { elements: elements.clone() }
-            }
+            Node::Branch { ref children } => Node::Branch { children: clone_arr!(children) },
+            Node::Leaf { ref elements } => Node::Leaf { elements: elements.clone() },
         }
     }
 }
