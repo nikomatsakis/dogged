@@ -154,7 +154,8 @@ impl<T: Clone + Debug> PersistentVec<T> {
         // We just filled up the tail, therefore we should have an
         // even multiple of BRANCH_FACTOR elements.
         debug_assert!(self.len.0 % BRANCH_FACTOR == 0);
-        println!("push_tail(tail={:?})", tail);
+        println!("---------------------------------------------------------------------------");
+        println!("PersistentVec::push_tail(tail={:?})", tail);
 
         if let Some(root) = self.root.as_mut() {
             // Find out the total capacity in the "leaf" tree.
