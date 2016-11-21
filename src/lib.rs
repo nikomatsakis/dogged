@@ -306,6 +306,34 @@ impl<T: Clone + Debug> Node<T> {
         // We compute the index of the *start* of the chunk (96-32 ==
         // 64), which will be 2 -- that is the index where this set of
         // leaves will go.
+        //
+        // Example 2.
+        //
+        // Assume branch size is 4 and the vector has 16 things in it.
+        // We are now pushing a new tail. In this case, we have an input
+        // like so:
+        //
+        // 0 (shift = 4)
+        // |
+        // +- 00
+        //     |
+        //     +- 000 (Leaf: elements 0..4)
+        //     +- 001 (Leaf: elements 4..8)
+        //     +- 002 (Leaf: elements 8..12)
+        //     +- 003 (Leaf: elements 12..16)
+        // +- 01 (None)
+        //
+        // We want to expand `01` to a subtree like:
+        //
+        // +- 01 (None)
+        //     |
+        //     +- 000 (Leaf: elements 16..20)
+        //     +- ... (None)
+        //
+        // This case is a bit different from the first, because we
+        // encounter a `None` as we are walking down the tree, before
+        // we get to the leaf.
+
         let mut p = self;
         let mut shift = shift;
         loop {
@@ -321,16 +349,15 @@ impl<T: Clone + Debug> Node<T> {
                     shift = shift.dec(); // represents the shift of children[child] now
 
                     if shift.0 == 0 {
-                        // children[child] is the final level
+                        // children[child] is the final level; this is example 1
                         debug_assert!(children[child].is_none());
                         debug!("Node::push_tail: storing with child={:?}", child);
                         children[child] = Some(Arc::new(Node::Leaf { elements: tail }));
                         return;
                     }
 
-                    // Load up the child and descend to that
-                    // level. There should be a child there or
-                    // something went wrong.
+                    // Load up the child and descend to that level (if
+                    // it is present). If not, we have example 2.
                     println!("Node::push_tail: shift={:?} index={:?} child={:?}",
                              shift,
                              index,
@@ -341,6 +368,7 @@ impl<T: Clone + Debug> Node<T> {
                         continue;
                     }
 
+                    // Example 2: have to construct multiple levels at once.
                     debug!("creating branch ladder at child {}", child);
                     children[child] = Some(Node::branch_ladder(shift, tail));
                     debug!("result: {:?}", children);
