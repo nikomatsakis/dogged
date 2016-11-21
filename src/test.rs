@@ -8,4 +8,8 @@ fn push_matches_len() {
         pv.push(i);
     }
     assert_eq!(pv.len(), N);
+
+    for i in 0..N {
+        assert_eq!(*pv.get(i).unwrap(), i);
+    }
 }

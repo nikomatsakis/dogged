@@ -123,7 +123,7 @@ impl<T: Clone> PersistentVec<T> {
             let capacity = BRANCH_FACTOR << self.shift.0;
 
             // Still have room.
-            if self.len < capacity {
+            if self.len <= capacity {
                 Arc::make_mut(root).push_tail(self.shift, self.len, tail);
                 return;
             }
@@ -133,6 +133,7 @@ impl<T: Clone> PersistentVec<T> {
             children[0] = Some(root.clone());
             children[1] = Some(Node::branch_ladder(self.shift, tail));
             *root = Arc::new(Node::Branch { children: children });
+            self.shift = self.shift.inc();
             return;
         }
 
@@ -143,6 +144,13 @@ impl<T: Clone> PersistentVec<T> {
 }
 
 impl Index {
+    /// when `Index` represents the end of a BRANCH_FACTOR-chunk, get
+    /// the index of the first element. i.e., if `self` is 64, then it
+    /// represents 32..64, so this would return an index of 32.
+    fn start(self) -> Index {
+        debug_assert!(self.0 % BRANCH_FACTOR == 0);
+        Index(self.0 - BRANCH_FACTOR)
+    }
     fn child(self, shift: Shift) -> usize {
         (self.0 >> shift.0) & (BRANCH_FACTOR - 1)
     }
@@ -154,6 +162,10 @@ impl Index {
 impl Shift {
     fn dec(self) -> Shift {
         Shift(self.0 - BITS_PER_LEVEL)
+    }
+
+    fn inc(self) -> Shift {
+        Shift(self.0 + BITS_PER_LEVEL)
     }
 }
 
@@ -185,12 +197,9 @@ impl<T: Clone> Node<T> {
         // shift will be 5 and our index will be 96 (32*3). Since the
         // shift is equal to BITS_PER_LEVEL, we know that the
         // immediate children are leaves, so our iteration is done.
-        // We compute the index, which will be 3 -- that is the index
-        // where the *next* set of leaves will go. To find the index
-        // for the current set, we subtract one. This gets us 2, and
-        // we store. Note that we know that the index is never 0,
-        // because that case corresponds to having to add a new level
-        // to the tree, and we handle that elsewhere.
+        // We compute the index of the *start* of the chunk (96-32 ==
+        // 64), which will be 2 -- that is the index where this set of
+        // leaves will go.
         let mut p = self;
         let mut shift = shift;
         loop {
@@ -201,21 +210,27 @@ impl<T: Clone> Node<T> {
                     unreachable!("should not encounter a leaf w/ shift {:?}", shift)
                 }
                 Node::Branch { ref mut children } => {
-                    let child = index.child(shift);
                     if shift.0 == BITS_PER_LEVEL {
                         // We are on the final level; our children are leaves.
-                        debug_assert!(child > 0); // this case is handled by `branch_ladder` above
-                        let dest = child - 1;
-                        debug_assert!(children[dest].is_none());
-                        children[dest] = Some(Arc::new(Node::Leaf { elements: tail }));
+                        let child = index.start().child(shift);
+                        debug_assert!(children[child].is_none());
+                        children[child] = Some(Arc::new(Node::Leaf { elements: tail }));
                         return;
                     }
 
                     // Load up the child and descend to that
                     // level. There should be a child there or
                     // something went wrong.
-                    p = Arc::make_mut(children[child].as_mut().unwrap());
+                    let child = index.child(shift);
                     shift = shift.dec();
+                    if children[child].is_some() {
+                        let child = children[child].as_mut().unwrap();
+                        p = Arc::make_mut(child);
+                        continue;
+                    }
+
+                    children[child] = Some(Node::branch_ladder(shift, tail));
+                    return;
                 }
             }
         }
