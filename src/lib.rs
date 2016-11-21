@@ -1,4 +1,6 @@
-use std::cmp::{self, PartialOrd, Ordering};
+#[cfg(test)]
+use std::cmp;
+use std::cmp::{PartialOrd, Ordering};
 use std::fmt::Debug;
 use std::mem;
 use std::sync::Arc;
@@ -69,10 +71,10 @@ macro_rules! clone_arr {
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PersistentVec<T> {
-    len: Index,
+    root_len: Index, // number of things reachable from root (excluding tail)
     shift: Shift, // depth * BITS_PER_LEVEL
     root: Option<Arc<Node<T>>>,
-    tail: Vec<T>,
+    tail: Vec<T>, // incomplete set of BITS_PER_LEVEL items at end of list
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -94,7 +96,7 @@ enum Node<T> {
 impl<T: Clone + Debug> PersistentVec<T> {
     pub fn new() -> Self {
         PersistentVec {
-            len: Index(0),
+            root_len: Index(0),
             shift: Shift(0),
             root: None,
             tail: Vec::with_capacity(BRANCH_FACTOR),
@@ -102,48 +104,32 @@ impl<T: Clone + Debug> PersistentVec<T> {
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
-        match self.root {
-            None => {
-                debug_assert!(self.len.0 == 0);
-                None
-            }
-            Some(ref node) => {
-                if index >= self.len.0 {
-                    None
-                } else {
-                    Some(node.get(self.shift, Index(index)))
-                }
-            }
+        if index < self.root_len.0 {
+            Some(self.root.as_ref().unwrap().get(self.shift, Index(index)))
+        } else {
+            self.tail.get(index - self.root_len.0)
         }
     }
 
-    pub fn get_mut(&mut self, index: usize) -> Option<&T> {
-        match self.root {
-            None => {
-                debug_assert!(self.len.0 == 0);
-                None
-            }
-            Some(ref mut node) => {
-                if index >= self.len.0 {
-                    None
-                } else {
-                    Some(Arc::make_mut(node).get_mut(self.shift, Index(index)))
-                }
-            }
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        if index < self.root_len.0 {
+            Some(Arc::make_mut(self.root.as_mut().unwrap()).get_mut(self.shift, Index(index)))
+        } else {
+            self.tail.get_mut(index - self.root_len.0)
         }
     }
 
     pub fn len(&self) -> usize {
-        self.len.0
+        self.root_len.0 + self.tail.len()
     }
 
     pub fn push(&mut self, element: T) {
         self.tail.push(element);
-        self.len.0 += 1;
 
         if self.tail.len() == BRANCH_FACTOR {
             let tail = mem::replace(&mut self.tail, Vec::with_capacity(BRANCH_FACTOR));
             self.push_tail(tail);
+            self.root_len.0 += BRANCH_FACTOR;
         }
 
         self.validate();
@@ -153,7 +139,7 @@ impl<T: Clone + Debug> PersistentVec<T> {
     fn push_tail(&mut self, tail: Vec<T>) {
         // We just filled up the tail, therefore we should have an
         // even multiple of BRANCH_FACTOR elements.
-        debug_assert!(self.len.0 % BRANCH_FACTOR == 0);
+        debug_assert!(self.root_len.0 % BRANCH_FACTOR == 0);
         println!("---------------------------------------------------------------------------");
         println!("PersistentVec::push_tail(tail={:?})", tail);
 
@@ -162,9 +148,9 @@ impl<T: Clone + Debug> PersistentVec<T> {
             let capacity = BRANCH_FACTOR << self.shift.0;
 
             // Still have room.
-            println!("push_tail: self.len={:?} capacity={:?}", self.len, capacity);
-            if self.len <= capacity {
-                Arc::make_mut(root).push_tail(self.shift, self.len.start(), tail);
+            println!("push_tail: self.root_len={:?} capacity={:?}", self.root_len, capacity);
+            if (self.root_len.0 + BRANCH_FACTOR) <= capacity {
+                Arc::make_mut(root).push_tail(self.shift, self.root_len, tail);
                 return;
             }
 
@@ -177,7 +163,7 @@ impl<T: Clone + Debug> PersistentVec<T> {
             return;
         }
 
-        debug_assert!(self.len == BRANCH_FACTOR);
+        debug_assert!(self.root_len == 0);
         debug_assert!(self.shift == 0);
         self.root = Some(Arc::new(Node::Leaf { elements: tail }));
     }
@@ -188,8 +174,7 @@ impl<T: Clone + Debug> PersistentVec<T> {
     #[cfg(test)]
     fn validate(&self) {
         if let Some(ref root) = self.root {
-            let root_len = Index(self.len.0 - self.tail.len());
-            if let Err(err) = root.validate(&mut vec![], self.shift, root_len) {
+            if let Err(err) = root.validate(&mut vec![], self.shift, self.root_len) {
                 panic!("validation error {} with {:#?}", err, root);
             }
         }
@@ -201,13 +186,6 @@ impl<T: Clone + Debug> PersistentVec<T> {
 }
 
 impl Index {
-    /// when `Index` represents the end of a BRANCH_FACTOR-chunk, get
-    /// the index of the first element. i.e., if `self` is 64, then it
-    /// represents 32..64, so this would return an index of 32.
-    fn start(self) -> Index {
-        debug_assert!(self.0 % BRANCH_FACTOR == 0);
-        Index(self.0 - BRANCH_FACTOR)
-    }
     fn child(self, shift: Shift) -> usize {
         (self.0 >> shift.0) & (BRANCH_FACTOR - 1)
     }
@@ -227,6 +205,7 @@ impl Shift {
 }
 
 impl<T: Clone + Debug> Node<T> {
+    #[cfg(test)]
     pub fn validate(&self, path: &mut Vec<usize>, shift: Shift, len: Index) -> Result<(), String> {
         // This is called just after a `push_tail`. The tree should be
         // dense to the left.
@@ -391,7 +370,7 @@ impl<T: Clone + Debug> Node<T> {
         }
     }
 
-    pub fn get_mut(&mut self, shift: Shift, index: Index) -> &T {
+    pub fn get_mut(&mut self, shift: Shift, index: Index) -> &mut T {
         let mut p = self;
         let mut shift = shift;
         loop {
@@ -411,7 +390,7 @@ impl<T: Clone + Debug> Node<T> {
                     debug_assert!(shift.0 == 0);
                     debug_assert!(elements.len() == BRANCH_FACTOR);
                     let child = index.leaf_child();
-                    return &elements[child];
+                    return &mut elements[child];
                 }
             }
         }
