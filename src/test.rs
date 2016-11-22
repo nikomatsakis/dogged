@@ -73,3 +73,65 @@ fn push_matches_mutate_in_place() {
         assert_eq!(pv.get(i).unwrap() as *const usize, pv0.get(i).unwrap() as *const usize);
     }
 }
+
+macro_rules! push {
+    ($mod_name: ident, $N: expr) => {
+        mod $mod_name {
+            use PersistentVec;
+            use test_crate;
+            const N: usize = $N;
+
+            #[bench]
+            fn dogged(b: &mut test_crate::Bencher) {
+                b.iter(|| {
+                    let mut vec = PersistentVec::new();
+                    for i in 0 .. N {
+                        vec.push(i);
+                    }
+                });
+            }
+
+            #[bench]
+            fn standard(b: &mut test_crate::Bencher) {
+                b.iter(|| {
+                    let mut vec = Vec::new();
+                    for i in 0 .. N {
+                        vec.push(i);
+                    }
+                });
+            }
+        }
+    }
+}
+
+push!(push_5000, 5000);
+
+macro_rules! sum {
+    ($mod_name: ident, $N: expr) => {
+        mod $mod_name {
+            use PersistentVec;
+            use test_crate;
+            const N: usize = $N;
+
+            #[bench]
+            fn dogged(b: &mut test_crate::Bencher) {
+                b.iter(|| {
+                    let mut vec = PersistentVec::new();
+                    for i in 0 .. N {
+                        vec.push(i);
+                    }
+                });
+            }
+
+            #[bench]
+            fn standard(b: &mut test_crate::Bencher) {
+                b.iter(|| {
+                    let mut vec = Vec::new();
+                    for i in 0 .. N {
+                        vec.push(i);
+                    }
+                });
+            }
+        }
+    }
+}

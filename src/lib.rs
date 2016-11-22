@@ -1,5 +1,11 @@
+#![cfg_attr(test, feature(test))]
+
 #[cfg(test)]
 use std::cmp;
+
+#[cfg(test)]
+extern crate test as test_crate;
+
 use std::cmp::{PartialOrd, Ordering};
 use std::fmt::Debug;
 use std::mem;
@@ -358,10 +364,10 @@ impl<T: Clone + Debug> Node<T> {
 
                     // Load up the child and descend to that level (if
                     // it is present). If not, we have example 2.
-                    println!("Node::push_tail: shift={:?} index={:?} child={:?}",
-                             shift,
-                             index,
-                             child);
+                    debug!("Node::push_tail: shift={:?} index={:?} child={:?}",
+                           shift,
+                           index,
+                           child);
                     if children[child].is_some() {
                         let child = children[child].as_mut().unwrap();
                         p = Arc::make_mut(child);
