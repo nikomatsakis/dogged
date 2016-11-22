@@ -9,7 +9,7 @@ extern crate test as test_crate;
 use std::cmp::{PartialOrd, Ordering};
 use std::fmt::Debug;
 use std::mem;
-use std::sync::Arc;
+use std::rc::Rc as Arc;
 
 macro_rules! debug {
     ($($t:tt)*) => {
@@ -84,7 +84,7 @@ macro_rules! clone_arr {
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct PersistentVec<T> {
+pub struct DVec<T> {
     root_len: Index, // number of things reachable from root (excluding tail)
     shift: Shift, // depth * BITS_PER_LEVEL
     root: Option<Arc<Node<T>>>,
@@ -107,9 +107,9 @@ enum Node<T> {
     },
 }
 
-impl<T: Clone + Debug> PersistentVec<T> {
+impl<T: Clone + Debug> DVec<T> {
     pub fn new() -> Self {
-        PersistentVec {
+        DVec {
             root_len: Index(0),
             shift: Shift(0),
             root: None,
@@ -155,7 +155,7 @@ impl<T: Clone + Debug> PersistentVec<T> {
         // even multiple of BRANCH_FACTOR elements.
         debug_assert!(self.root_len.0 % BRANCH_FACTOR == 0);
         debug!("---------------------------------------------------------------------------");
-        debug!("PersistentVec::push_tail(tail={:?})", tail);
+        debug!("DVec::push_tail(tail={:?})", tail);
 
         if let Some(root) = self.root.as_mut() {
             // Find out the total capacity in the "leaf" tree.

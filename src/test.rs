@@ -1,10 +1,10 @@
-use super::PersistentVec;
+use super::DVec;
 use super::BRANCH_FACTOR;
 
 #[test]
 fn push_matches_len() {
     const N: usize = 5000;
-    let mut pv = PersistentVec::new();
+    let mut pv = DVec::new();
     for i in 0..N {
         pv.push(i);
     }
@@ -18,7 +18,7 @@ fn push_matches_len() {
 #[test]
 fn push_matches_len_cloned() {
     const N: usize = 5000;
-    let mut pv = PersistentVec::new();
+    let mut pv = DVec::new();
     for i in 0..N {
         pv.push(i);
     }
@@ -46,7 +46,7 @@ fn push_matches_len_cloned() {
 #[test]
 fn push_matches_mutate_in_place() {
     const N: usize = BRANCH_FACTOR * 4;
-    let mut pv = PersistentVec::new();
+    let mut pv = DVec::new();
     for i in 0..N {
         pv.push(i);
     }
@@ -77,14 +77,14 @@ fn push_matches_mutate_in_place() {
 macro_rules! push {
     ($mod_name: ident, $N: expr) => {
         mod $mod_name {
-            use PersistentVec;
+            use DVec;
             use test_crate;
             const N: usize = $N;
 
             #[bench]
             fn dogged(b: &mut test_crate::Bencher) {
                 b.iter(|| {
-                    let mut vec = PersistentVec::new();
+                    let mut vec = DVec::new();
                     for i in 0 .. N {
                         vec.push(i);
                     }
@@ -109,14 +109,14 @@ push!(push_5000, 5000);
 macro_rules! sum {
     ($mod_name: ident, $N: expr) => {
         mod $mod_name {
-            use PersistentVec;
+            use DVec;
             use test_crate;
             const N: usize = $N;
 
             #[bench]
             fn dogged(b: &mut test_crate::Bencher) {
                 b.iter(|| {
-                    let mut vec = PersistentVec::new();
+                    let mut vec = DVec::new();
                     for i in 0 .. N {
                         vec.push(i);
                     }
