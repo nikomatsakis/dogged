@@ -17,6 +17,8 @@ macro_rules! debug {
     }
 }
 
+const VALIDATE: bool = false;
+
 #[cfg(not(small_branch))]
 const BRANCH_FACTOR: usize = 32;
 
@@ -185,15 +187,17 @@ impl<T: Clone + Debug> PersistentVec<T> {
 
     #[cfg(test)]
     fn validate(&self) {
-        if let Some(ref root) = self.root {
-            if let Err(err) = root.validate(&mut vec![], self.shift, self.root_len) {
-                panic!("validation error {} with {:#?}", err, root);
+        if VALIDATE {
+            if let Some(ref root) = self.root {
+                if let Err(err) = root.validate(&mut vec![], self.shift, self.root_len) {
+                    panic!("validation error {} with {:#?}", err, root);
+                }
             }
+            let tail_len = self.tail.len();
+            assert!(tail_len < BRANCH_FACTOR,
+                    "tail got too long: {:?}",
+                    tail_len);
         }
-        let tail_len = self.tail.len();
-        assert!(tail_len < BRANCH_FACTOR,
-                "tail got too long: {:?}",
-                tail_len);
     }
 }
 
