@@ -9,7 +9,7 @@ extern crate test as test_crate;
 use std::cmp::{PartialOrd, Ordering};
 use std::fmt::Debug;
 use std::mem;
-use std::rc::Rc as Arc;
+use std::sync::Arc;
 
 macro_rules! debug {
     ($($t:tt)*) => {
