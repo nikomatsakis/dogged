@@ -6,6 +6,9 @@ use std::cmp;
 #[cfg(test)]
 extern crate test as test_crate;
 
+#[cfg(test)]
+extern crate rand;
+
 use std::cmp::{PartialOrd, Ordering};
 use std::fmt::Debug;
 use std::mem;

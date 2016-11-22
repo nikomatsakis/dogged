@@ -108,7 +108,7 @@ push!(push_5000, 5000);
 push!(push_50000, 50000);
 push!(push_500000, 500000);
 
-macro_rules! sum {
+macro_rules! index_sequentially {
     ($mod_name: ident, $N: expr) => {
         mod $mod_name {
             use DVec;
@@ -117,23 +117,78 @@ macro_rules! sum {
 
             #[bench]
             fn dogged(b: &mut test_crate::Bencher) {
+                let mut vec = DVec::new();
+                for i in 0 .. N {
+                    vec.push(i * 2);
+                }
                 b.iter(|| {
-                    let mut vec = DVec::new();
                     for i in 0 .. N {
-                        vec.push(i);
+                        assert_eq!(*vec.get(i).unwrap(), i * 2);
                     }
                 });
             }
 
             #[bench]
             fn standard(b: &mut test_crate::Bencher) {
+                let mut vec = Vec::new();
+                for i in 0 .. N {
+                    vec.push(i * 2);
+                }
                 b.iter(|| {
-                    let mut vec = Vec::new();
                     for i in 0 .. N {
-                        vec.push(i);
+                        assert_eq!(*vec.get(i).unwrap(), i * 2);
                     }
                 });
             }
         }
     }
 }
+
+index_sequentially!(index_sequentially_5000, 5000);
+index_sequentially!(index_sequentially_50000, 50000);
+index_sequentially!(index_sequentially_500000, 500000);
+
+macro_rules! index_randomly {
+    ($mod_name: ident, $N: expr) => {
+        mod $mod_name {
+            use DVec;
+            use rand::{Rng, SeedableRng, XorShiftRng};
+            use test_crate;
+            const N: usize = $N;
+
+            #[bench]
+            fn dogged(b: &mut test_crate::Bencher) {
+                let mut vec = DVec::new();
+                for i in 0 .. N {
+                    vec.push(i * 2);
+                }
+                let mut rng = XorShiftRng::from_seed([0, 1, 2, 3]);
+                b.iter(|| {
+                    for _ in 0 .. N {
+                        let j = (rng.next_u32() as usize) % N;
+                        assert_eq!(*vec.get(j).unwrap(), j * 2);
+                    }
+                });
+            }
+
+            #[bench]
+            fn standard(b: &mut test_crate::Bencher) {
+                let mut vec = Vec::new();
+                for i in 0 .. N {
+                    vec.push(i * 2);
+                }
+                let mut rng = XorShiftRng::from_seed([0, 1, 2, 3]);
+                b.iter(|| {
+                    for _ in 0 .. N {
+                        let j = (rng.next_u32() as usize) % N;
+                        assert_eq!(*vec.get(j).unwrap(), j * 2);
+                    }
+                });
+            }
+        }
+    }
+}
+
+index_randomly!(index_randomly_5000, 5000);
+index_randomly!(index_randomly_50000, 50000);
+index_randomly!(index_randomly_500000, 500000);

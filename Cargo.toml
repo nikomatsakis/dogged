@@ -8,3 +8,6 @@ repository = "https://github.com/nikomatsakis/dogged"
 documentation = "https://docs.rs/dogged/"
 
 [dependencies]
+
+[dev-dependencies]
+rand = "0.3.14"
