@@ -1,5 +1,5 @@
 [package]
-name = "persistent-vec"
+name = "dogged"
 version = "0.1.0"
 authors = ["Niko Matsakis <niko@alum.mit.edu>"]
 description = "Persistent vector, similar to Clojure"
