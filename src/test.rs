@@ -105,6 +105,8 @@ macro_rules! push {
 }
 
 push!(push_5000, 5000);
+push!(push_50000, 50000);
+push!(push_500000, 500000);
 
 macro_rules! sum {
     ($mod_name: ident, $N: expr) => {
