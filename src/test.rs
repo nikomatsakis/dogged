@@ -54,23 +54,24 @@ fn push_matches_mutate_in_place() {
     assert_eq!(pv.len(), N);
     assert_eq!(pv0.len(), N);
 
-    for i in 0..(N/2) {
+    for i in 0..(N / 2) {
         *pv.get_mut(i).unwrap() += 1;
     }
 
     assert_eq!(pv.len(), N);
     assert_eq!(pv0.len(), N);
 
-    for i in 0..(N/2) {
+    for i in 0..(N / 2) {
         assert_eq!(*pv.get(i).unwrap(), i + 1);
         assert_eq!(*pv0.get(i).unwrap(), i);
     }
 
     // the second half ought to be untouched
-    for i in N/2..N {
+    for i in N / 2..N {
         assert_eq!(*pv.get(i).unwrap(), i);
         assert_eq!(*pv0.get(i).unwrap(), i);
-        assert_eq!(pv.get(i).unwrap() as *const usize, pv0.get(i).unwrap() as *const usize);
+        assert_eq!(pv.get(i).unwrap() as *const usize,
+                   pv0.get(i).unwrap() as *const usize);
     }
 }
 
@@ -115,23 +116,41 @@ macro_rules! sum {
 
             #[bench]
             fn dogged(b: &mut test_crate::Bencher) {
+                let mut vec = PersistentVec::new();
+                for i in 0 .. N {
+                    vec.push(i);
+                }
+
+                let mut sum = 0;
                 b.iter(|| {
-                    let mut vec = PersistentVec::new();
+                    sum = 0;
                     for i in 0 .. N {
-                        vec.push(i);
+                        sum += *vec.get(i).unwrap();
                     }
                 });
+
+                assert_eq!(sum, (0..N).sum());
             }
 
             #[bench]
             fn standard(b: &mut test_crate::Bencher) {
+                let mut vec = Vec::new();
+                for i in 0 .. N {
+                    vec.push(i);
+                }
+
+                let mut sum = 0;
                 b.iter(|| {
-                    let mut vec = Vec::new();
+                    sum = 0;
                     for i in 0 .. N {
-                        vec.push(i);
+                        sum += vec[i];
                     }
                 });
+
+                assert_eq!(sum, (0..N).sum());
             }
         }
     }
 }
+
+sum!(sum_5000, 5000);
