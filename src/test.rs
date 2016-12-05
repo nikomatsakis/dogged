@@ -155,3 +155,44 @@ macro_rules! sum {
 
 sum!(sum_5000, 5000);
 sum!(sum_50000, 50000);
+
+macro_rules! inc {
+    ($mod_name: ident, $N: expr) => {
+        mod $mod_name {
+            use PersistentVec;
+            use test_crate;
+            const N: usize = $N;
+
+            #[bench]
+            fn dogged(b: &mut test_crate::Bencher) {
+                let mut vec = PersistentVec::new();
+                for i in 0 .. N {
+                    vec.push(i);
+                }
+
+                b.iter(|| {
+                    for i in 0 .. N {
+                        vec.get_mut(i).unwrap().wrapping_add(1);
+                    }
+                });
+            }
+
+            #[bench]
+            fn standard(b: &mut test_crate::Bencher) {
+                let mut vec = Vec::new();
+                for i in 0 .. N {
+                    vec.push(i);
+                }
+
+                b.iter(|| {
+                    for i in 0 .. N {
+                        vec.get_mut(i).unwrap().wrapping_add(1);
+                    }
+                });
+            }
+        }
+    }
+}
+
+inc!(inc_5000, 5000);
+inc!(inc_50000, 50000);
