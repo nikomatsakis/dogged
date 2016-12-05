@@ -398,8 +398,7 @@ impl<T: Clone + Debug> Node<T> {
                     let child = index.child(shift);
                     p = match children[child] {
                         Some(ref c) => &*c,
-                        None => panic!("missing child {} at shift {} (index={})",
-                                       child, shift.0, index.0),
+                        None => unreachable!(),
                     };
                     shift = shift.dec();
                 }
@@ -425,7 +424,7 @@ impl<T: Clone + Debug> Node<T> {
                     let child = index.child(shift);
                     p = match children[child] {
                         Some(ref mut c) => Arc::make_mut(c),
-                        None => panic!("missing child {} at shift {}", child, shift.0),
+                        None => unreachable!(),
                     };
                     shift = shift.dec();
                 }
