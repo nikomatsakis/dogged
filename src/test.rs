@@ -154,3 +154,4 @@ macro_rules! sum {
 }
 
 sum!(sum_5000, 5000);
+sum!(sum_50000, 50000);
