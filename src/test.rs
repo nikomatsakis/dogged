@@ -1,10 +1,10 @@
-use super::PersistentVec;
+use super::DVec;
 use super::BRANCH_FACTOR;
 
 #[test]
 fn push_matches_len() {
     const N: usize = 5000;
-    let mut pv = PersistentVec::new();
+    let mut pv = DVec::new();
     for i in 0..N {
         pv.push(i);
     }
@@ -18,7 +18,7 @@ fn push_matches_len() {
 #[test]
 fn push_matches_len_cloned() {
     const N: usize = 5000;
-    let mut pv = PersistentVec::new();
+    let mut pv = DVec::new();
     for i in 0..N {
         pv.push(i);
     }
@@ -46,7 +46,7 @@ fn push_matches_len_cloned() {
 #[test]
 fn push_matches_mutate_in_place() {
     const N: usize = BRANCH_FACTOR * 4;
-    let mut pv = PersistentVec::new();
+    let mut pv = DVec::new();
     for i in 0..N {
         pv.push(i);
     }
@@ -78,14 +78,14 @@ fn push_matches_mutate_in_place() {
 macro_rules! push {
     ($mod_name: ident, $N: expr) => {
         mod $mod_name {
-            use PersistentVec;
+            use DVec;
             use test_crate;
             const N: usize = $N;
 
             #[bench]
             fn dogged(b: &mut test_crate::Bencher) {
                 b.iter(|| {
-                    let mut vec = PersistentVec::new();
+                    let mut vec = DVec::new();
                     for i in 0 .. N {
                         vec.push(i);
                     }
@@ -106,26 +106,25 @@ macro_rules! push {
 }
 
 push!(push_5000, 5000);
+push!(push_50000, 50000);
+push!(push_500000, 500000);
 
-macro_rules! sum {
+macro_rules! index_sequentially {
     ($mod_name: ident, $N: expr) => {
         mod $mod_name {
-            use PersistentVec;
+            use DVec;
             use test_crate;
             const N: usize = $N;
 
             #[bench]
             fn dogged(b: &mut test_crate::Bencher) {
-                let mut vec = PersistentVec::new();
+                let mut vec = DVec::new();
                 for i in 0 .. N {
-                    vec.push(i);
+                    vec.push(i * 2);
                 }
-
-                let mut sum = 0;
                 b.iter(|| {
-                    sum = 0;
                     for i in 0 .. N {
-                        sum += *vec.get(i).unwrap();
+                        assert_eq!(*vec.get(i).unwrap(), i * 2);
                     }
                 });
 
@@ -136,14 +135,11 @@ macro_rules! sum {
             fn standard(b: &mut test_crate::Bencher) {
                 let mut vec = Vec::new();
                 for i in 0 .. N {
-                    vec.push(i);
+                    vec.push(i * 2);
                 }
-
-                let mut sum = 0;
                 b.iter(|| {
-                    sum = 0;
                     for i in 0 .. N {
-                        sum += vec[i];
+                        assert_eq!(*vec.get(i).unwrap(), i * 2);
                     }
                 });
 
@@ -153,26 +149,29 @@ macro_rules! sum {
     }
 }
 
-sum!(sum_5000, 5000);
-sum!(sum_50000, 50000);
+index_sequentially!(index_sequentially_5000, 5000);
+index_sequentially!(index_sequentially_50000, 50000);
+index_sequentially!(index_sequentially_500000, 500000);
 
-macro_rules! inc {
+macro_rules! index_randomly {
     ($mod_name: ident, $N: expr) => {
         mod $mod_name {
-            use PersistentVec;
+            use DVec;
+            use rand::{Rng, SeedableRng, XorShiftRng};
             use test_crate;
             const N: usize = $N;
 
             #[bench]
             fn dogged(b: &mut test_crate::Bencher) {
-                let mut vec = PersistentVec::new();
+                let mut vec = DVec::new();
                 for i in 0 .. N {
-                    vec.push(i);
+                    vec.push(i * 2);
                 }
-
+                let mut rng = XorShiftRng::from_seed([0, 1, 2, 3]);
                 b.iter(|| {
-                    for i in 0 .. N {
-                        vec.get_mut(i).unwrap().wrapping_add(1);
+                    for _ in 0 .. N {
+                        let j = (rng.next_u32() as usize) % N;
+                        assert_eq!(*vec.get(j).unwrap(), j * 2);
                     }
                 });
             }
@@ -181,12 +180,13 @@ macro_rules! inc {
             fn standard(b: &mut test_crate::Bencher) {
                 let mut vec = Vec::new();
                 for i in 0 .. N {
-                    vec.push(i);
+                    vec.push(i * 2);
                 }
-
+                let mut rng = XorShiftRng::from_seed([0, 1, 2, 3]);
                 b.iter(|| {
-                    for i in 0 .. N {
-                        vec.get_mut(i).unwrap().wrapping_add(1);
+                    for _ in 0 .. N {
+                        let j = (rng.next_u32() as usize) % N;
+                        assert_eq!(*vec.get(j).unwrap(), j * 2);
                     }
                 });
             }
@@ -194,5 +194,6 @@ macro_rules! inc {
     }
 }
 
-inc!(inc_5000, 5000);
-inc!(inc_50000, 50000);
+index_randomly!(index_randomly_5000, 5000);
+index_randomly!(index_randomly_50000, 50000);
+index_randomly!(index_randomly_500000, 500000);

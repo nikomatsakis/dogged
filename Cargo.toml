@@ -1,6 +1,13 @@
 [package]
-name = "persistent-vec"
+name = "dogged"
 version = "0.1.0"
 authors = ["Niko Matsakis <niko@alum.mit.edu>"]
+description = "Persistent vector, similar to Clojure"
+license = "Apache-2.0/MIT"
+repository = "https://github.com/nikomatsakis/dogged"
+documentation = "https://docs.rs/dogged/"
 
 [dependencies]
+
+[dev-dependencies]
+rand = "0.3.14"
