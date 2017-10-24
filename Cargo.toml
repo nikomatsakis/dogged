@@ -1,6 +1,6 @@
 [package]
 name = "dogged"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Niko Matsakis <niko@alum.mit.edu>"]
 description = "Persistent vector, similar to Clojure"
 license = "Apache-2.0/MIT"
