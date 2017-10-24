@@ -20,6 +20,7 @@ macro_rules! debug {
     }
 }
 
+#[cfg(test)]
 const VALIDATE: bool = false;
 
 #[cfg(not(small_branch))]
@@ -352,7 +353,7 @@ impl<T: Clone + Debug> Node<T> {
         loop {
             debug!("shift={:?}", shift);
             debug_assert!(shift.0 >= BITS_PER_LEVEL);
-            let mut q = p; // FIXME
+            let q = p; // FIXME
             match *q {
                 Node::Leaf { .. } => {
                     unreachable!("should not encounter a leaf w/ shift {:?}", shift)
@@ -420,7 +421,7 @@ impl<T: Clone + Debug> Node<T> {
         let mut p = self;
         let mut shift = shift;
         loop {
-            let mut q = p; // FIXME
+            let q = p; // FIXME
             match *q {
                 Node::Branch { ref mut children } => {
                     debug_assert!(shift.0 > 0);

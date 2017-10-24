@@ -127,8 +127,6 @@ macro_rules! index_sequentially {
                         assert_eq!(*vec.get(i).unwrap(), i * 2);
                     }
                 });
-
-                assert_eq!(sum, (0..N).sum());
             }
 
             #[bench]
@@ -142,8 +140,6 @@ macro_rules! index_sequentially {
                         assert_eq!(*vec.get(i).unwrap(), i * 2);
                     }
                 });
-
-                assert_eq!(sum, (0..N).sum());
             }
         }
     }
