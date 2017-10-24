@@ -124,7 +124,7 @@ macro_rules! index_sequentially {
                 }
                 b.iter(|| {
                     for i in 0 .. N {
-                        assert_eq!(*vec.get(i).unwrap(), i * 2);
+                        assert_eq!(vec[i], i * 2);
                     }
                 });
             }
@@ -137,7 +137,7 @@ macro_rules! index_sequentially {
                 }
                 b.iter(|| {
                     for i in 0 .. N {
-                        assert_eq!(*vec.get(i).unwrap(), i * 2);
+                        assert_eq!(vec[i], i * 2);
                     }
                 });
             }

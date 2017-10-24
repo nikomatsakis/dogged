@@ -11,6 +11,7 @@ extern crate rand;
 
 use std::cmp::{PartialOrd, Ordering};
 use std::fmt::Debug;
+use std::ops;
 use std::mem;
 use std::sync::Arc;
 
@@ -87,6 +88,28 @@ macro_rules! clone_arr {
     }
 }
 
+/// A **persistent** vector of `T` elements. Persistent collections
+/// change the trade-off relative to ordinary collections: they are
+/// very cheap to clone, but more expensive to update. Behind the
+/// scenes, `DVec` instances that are cloned from one another will
+/// share some part of their representation.
+///
+/// You may be accustomed to persistent APIs in other languages,
+/// where each mutation operation returns a new collection instead of
+/// modifying the collection in place. The `DVec` type, in contrast,
+/// behaves roughly like an ordinary vector, except that you can cheaply
+/// clone it. If you want to get a new collection with a given mutation,
+/// but leave the existing collection alone, use `clone`:
+///
+/// ```rust
+/// # use dogged::DVec;
+/// let mut vec1 = DVec::new();
+/// vec1.push(22);
+/// let mut vec2 = vec1.clone();
+/// vec2.push(44);
+/// assert_eq!(vec1.len(), 1);
+/// assert_eq!(vec2.len(), 2);
+/// ```
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct DVec<T> {
     root_len: Index, // number of things reachable from root (excluding tail)
@@ -202,6 +225,27 @@ impl<T: Clone + Debug> DVec<T> {
                     "tail got too long: {:?}",
                     tail_len);
         }
+    }
+}
+
+impl<T: Clone + Debug> ops::Index<usize> for DVec<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &T {
+        self.get(index).unwrap_or_else(|| {
+            panic!("index `{}` out of bounds in DVec of length `{}`",
+                   index, self.len())
+        })
+    }
+}
+
+impl<T: Clone + Debug> ops::IndexMut<usize> for DVec<T> {
+    fn index_mut(&mut self, index: usize) -> &mut T {
+        let len = self.len();
+        self.get_mut(index).unwrap_or_else(|| {
+            panic!("index `{}` out of bounds in DVec of length `{}`",
+                   index, len)
+        })
     }
 }
 
