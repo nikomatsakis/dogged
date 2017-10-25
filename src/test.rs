@@ -109,6 +109,46 @@ push!(push_5000, 5000);
 push!(push_50000, 50000);
 push!(push_500000, 500000);
 
+macro_rules! push_clone {
+    ($mod_name: ident, $N: expr) => {
+        mod $mod_name {
+            use DVec;
+            use test_crate;
+            const N: usize = $N;
+
+            #[bench]
+            fn dogged(b: &mut test_crate::Bencher) {
+                b.iter(|| {
+                    let mut vec = DVec::new();
+                    let mut vec1 = vec.clone();
+                    for i in 0 .. N {
+                        vec.push(i);
+                        vec1 = vec.clone();
+                    }
+                    drop(vec1);
+                });
+            }
+
+            #[bench]
+            fn standard(b: &mut test_crate::Bencher) {
+                b.iter(|| {
+                    let mut vec = Vec::new();
+                    let mut vec1 = vec.clone();
+                    for i in 0 .. N {
+                        vec.push(i);
+                        vec1 = vec.clone();
+                    }
+                    drop(vec1);
+                });
+            }
+        }
+    }
+}
+
+push_clone!(push_clone_5000, 5000);
+// push_clone!(push_clone_50000, 50000);
+// push_clone!(push_clone_500000, 500000);
+
 macro_rules! index_sequentially {
     ($mod_name: ident, $N: expr) => {
         mod $mod_name {
